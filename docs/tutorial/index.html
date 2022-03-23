@@ -62,9 +62,20 @@ one</a> copies the contents from one file to another, safely
 handling <em>resources</em> and <em>cancelation</em> in the process. That should help us to
 flex our muscles. <a href="#producerconsumer">The second one</a> implements a solution to
 the producer-consumer problem to introduce cats-effect <em>fibers</em>.</p>
+<p>このチュートリアルはcats-effectが初めての人が主要な概念に慣れ親しむことができるように、
+コード例を使って補助することを、learn-by-doingな方法で試みます。
+2つの小さなプログラムが、それぞれ1つの節を使ってコーディングされます。
+<a href="#copyingfiles">1つ目</a>はあるファイルの中身を別のファイルにコピーしますが、
+その過程で<em>リソース</em>と<em>キャンセル</em>を安全に扱います。
+肩慣らしの助けになるはずです。
+<a href="#producerconsumer">2つ目</a>はproducer-consumer問題の解を実装することで、
+cats-effectの<em>fiber</em>を導入します。</p>
 <p>This tutorial assumes some familiarity with functional programming. It is
 also a good idea to read the cats-effect documentation prior to starting this
 tutorial, at least the <a href="/cats-effect/docs/getting-started">Getting Started page</a>.</p>
+<p>このチュートリアルは関数型プログラミングにいくらか親しみがあることを仮定します。
+このチュートリアルを始める前に、cats-effectのドキュメント、
+少なくとも<a href="/cats-effect/docs/getting-started">Getting Started ページ</a>を読むのもいいアイデアでしょう。</p>
 <p>Please read this tutorial as training material, not as a best-practices
 document. As you gain more experience with cats-effect, you will probably find
 your own solutions to deal with the problems presented here. Also, bear in mind
@@ -75,7 +86,17 @@ might want to take a look at <a href="http://fs2.io">fs2</a> or <a href="https:/
 to find powerful network and file abstractions that integrate with cats-effect.
 But that is beyond the purpose of this tutorial, which focuses solely on
 cats-effect.</p>
+<p>どうかこのチュートリアルをトレーニング資料として読んでください。
+ベストプラクティスドキュメントではなくて。
+cats-effectの経験を積むにしたがって、
+ここで提示される問題を処理するためのあなた自身の解をおそらくは見つけるでしょう。
+また、cats-effectをファイルコピーや（produce-consumer問題のような）基礎的な並行性パターンの
+実装に使うのは 'getting things done' アプローチに適しているものの、
+より複雑なシステム/状況/要件に対しては、<a href="http://fs2.io">fs2</a> や <a href="https://monix.io">Monix</a>
+を確認して、cats-effectと統合された強力なネットワークとファイルの抽象化を見つけたいと思うかもしれません。
+しかしこれらはこのチュートリアルの目的を超えます。cats-effectのみに集中したいので。</p>
 <p>That said, let's go!</p>
+<p>前置きがすんだところで、それじゃあ始めましょうか！</p>
 <h2><a class="anchor" aria-hidden="true" id="setting-things-up"></a><a href="#setting-things-up" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Setting things up</h2>
 <p>This <a href="https://github.com/lrodero/cats-effect-tutorial/tree/series/3.x">Github
 repo</a> includes
@@ -83,6 +104,11 @@ all the software that will be developed during this tutorial (branch
 <code>series/3.x</code>). It uses <code>sbt</code> as the build tool. To ease coding, compiling and
 running the code snippets in this tutorial, it is recommended to use the same
 <code>build.sbt</code>, or at least one with the same dependencies and compilation options:</p>
+<p>この<a href="https://github.com/lrodero/cats-effect-tutorial/tree/series/3.x">Githubレポジトリ</a>
+はこのチュートリアルで開発される全てのソフトウェアを含んでいます (ブランチ<code>series/3.x</code>)。
+<code>sbt</code>をビルドツールとして使用します。
+このチュートリアルのコードスニペットを楽にコーディング・コンパイル・実行するために、
+同じ<code>build.sbt</code>か、少なくとも同じ依存性とコンパイルオプションなものを使うことをお勧めします：</p>
 <pre><code class="hljs css language-scala">name := <span class="hljs-string">"cats-effect-tutorial"</span>
 
 version := <span class="hljs-string">"3.3.8"</span>
@@ -100,15 +126,24 @@ scalacOptions ++= <span class="hljs-type">Seq</span>(
 </code></pre>
 <p>Also make sure that you use a recent version of <code>sbt</code>, at least <code>1.4.2</code>. You can
 set the <code>sbt</code> version in <code>project/build.properties</code> file:</p>
+<p>最近のバージョンの<code>sbt</code>、少なくとも<code>1.4.2</code>以降のものを使うようにもしてください。
+<code>sbt</code>バージョンは<code>project/build.properties</code>ファイルで設定できます：</p>
 <pre><code class="hljs css language-scala">sbt.version=<span class="hljs-number">1.4</span><span class="hljs-number">.2</span>
 </code></pre>
 <p>Almost all code snippets in this tutorial can be pasted and compiled right in
 the scala console of the project defined above (or any project with similar
 settings).</p>
+<p>このチュートリアルのほぼ全てのコードスニペットは、
+上で定義した（または似た設定の）プロジェクトのScalaコンソール内に
+ペーストしてコンパイルすることができます。</p>
 <h2><a class="anchor" aria-hidden="true" id="a-namecopyingfilesacopying-files---basic-concepts-resource-handling-and-cancelation"></a><a href="#a-namecopyingfilesacopying-files---basic-concepts-resource-handling-and-cancelation" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><a name="copyingfiles"></a>Copying files - basic concepts, resource handling and cancelation</h2>
+<p>ファイルのコピー - 基礎概念、リソースの扱いとキャンセル</p>
 <p>Our goal is to create a program that copies files. First we will work on a
 function that carries out such a task, and then we will create a program that can be
 invoked from the shell and uses that function.</p>
+<p>私達の目標は、ファイルをコピーするプログラムを作成することです。
+私達はまずそのようなタスクを実行する関数に取り組み、
+その次にシェルから呼び出されてその関数を使うプログラムを作成します。</p>
 <p>First of all we must code the function that copies the content from a file to
 another file. The function takes the source and destination files as parameters.
 But this is functional programming! So invoking the function shall not copy
@@ -122,7 +157,23 @@ should be embedded in the <code>IO</code> instance. That is, no exception is rai
 the <code>IO</code> and so no <code>try</code> (or the like) needs to be used when using the function,
 instead the <code>IO</code> evaluation will fail and the <code>IO</code> instance will carry the error
 raised.</p>
+<p>まず、あるファイルから別のファイルへ内容をコピーする関数をコーディングしなければなりません。
+この関数はソースとデスティネーションのファイルをパラメータとして受けとります。
+しかし今やっているのは関数型プログラミングです！
+なのでこの関数の呼び出しは何もコピーをしてはならず、
+代わりに全ての副作用をカプセル化した<code>IO</code>インスタンスを返します
+（ここでの副作用は、ファイルを開いたり閉じたりすること、
+その中身を読んだり書き込んだりすることを指します）。そうすると<em>純粋性</em>が保たれます。
+その<code>IO</code>インスタンスが評価されたときのみ、それら全ての副作用的なアクションが実行されます。
+私達の実装ではこの<code>IO</code>インスタンスは実行時にコピーされたバイト数を返しますが、
+これは単に設計上の決定でしかありません。
+もちろんエラーは起こりうるのですが、
+どんな<code>IO</code>を使うときもそれらは<code>IO</code>インスタンスタンスに埋め込まれるべきです。
+つまり、<code>IO</code>の外で例外が発生することはなく、
+したがってこの関数を使うにあたって<code>try</code>のようなものは一切使う必要がありません。
+代わりに<code>IO</code>の評価が失敗して、<code>IO</code>インスタンスが発生したエラーを持つことになります。</p>
 <p>Now, the signature of our function looks like this:</p>
+<p>いま、私達の関数のシグネチャはこんな感じになります：</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect.<span class="hljs-type">IO</span>
 <span class="hljs-keyword">import</span> java.io.<span class="hljs-type">File</span>
 
@@ -133,15 +184,33 @@ instance. When run, all side-effects will be actually executed and the <code>IO<
 instance will return the bytes copied in a <code>Long</code> (note that <code>IO</code> is
 parameterized by the return type). Now, let's start implementing our function.
 First, we need to open two streams that will read and write file contents.</p>
+<p>何も怖いことはありませんね？
+前に言ったとおり、この関数は単に<code>IO</code>インスタンスを返します。
+走らせたら、全ての副作用が実際に実行されて、
+<code>IO</code>インスタンスはコピーされたバイト数を<code>Long</code>の中に返します
+（<code>IO</code>が返却値の型によってパラメタライズされていることに注意してください）。
+それでは、私達の関数の実装を始めましょう。
+まず、ファイルの中身を読み書きするための2つのストリームを開く必要があります。</p>
 <h3><a class="anchor" aria-hidden="true" id="acquiring-and-releasing-resources"></a><a href="#acquiring-and-releasing-resources" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Acquiring and releasing <code>Resource</code>s</h3>
+<p><code>Resource</code>の取得と開放</p>
 <p>We consider opening a stream to be a side-effectful action, so we have to
 encapsulate those actions in their own <code>IO</code> instances. We can just embed the
 actions by calling <code>IO(action)</code>, but when dealing with input/output actions it
 is advised to use instead <code>IO.blocking(action)</code>. This way we help cats-effect to
 better plan how to assign threads to actions. We will return to this topic when
 we introduce <em>fibers</em> later on in this tutorial.</p>
+<p>ストリームを開くことは副作用を伴うアクションだと考えられるので、
+これらのアクションはそれ自身<code>IO</code>インスタンスにカプセル化する必要があります。
+アクションを<code>IO(action)</code>の形の呼び出しで埋め込むこともできるのですが、
+入出力アクションを扱うときは代わりに<code>IO.blocking(action)</code>を使うほうが良いです。
+こうすると、どうやってスレッドをアクションに割り当てるか、cats-effectが
+より良い計画を立てるための助けになります。
+このチュートリアルの後の方で<em>ファイバー</em>を導入するとき、またこの話題に戻ってきます。</p>
 <p>Also, we will make use of cats-effect <code>Resource</code>. It allows to orderly create,
 use and then release resources. See this code:</p>
+<p>それから、私達はcats-effectの<code>Resource</code>を利用します。
+これはリソースの作成、使用、開放を行儀よく行うことを可能にします。
+このコードを見てください：</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect.{<span class="hljs-type">IO</span>, <span class="hljs-type">Resource</span>}
 <span class="hljs-keyword">import</span> java.io._  
 
@@ -178,10 +247,26 @@ care of any possible error during the release itself, for example with the
 ignore the error, but normally it should be at least logged. Often you will see
 that <code>.attempt.void</code> is used to get the same 'swallow and ignore errors'
 behavior.</p>
+<p>私達は、なにがなんでも、使い終わったらストリームが閉じられることを保証したいです。
+これこそ、私達が<code>Resource</code>を関数<code>inputStream</code>と<code>outputStream</code>の両方で使っている理由であり、
+各関数はストリームの開閉アクションをカプセル化した<code>Resource</code>を一つ返します。
+<code>inputOutputStreams</code>は両方のリソースを一つの<code>Resource</code>インスタンスにカプセル化します。
+このインスタンスは両方のストリームが無事に作成されたとき、またそのときに限り利用可能になります。
+上のコードで見られるように、<code>Resource</code>インスタンスはfor内包表記で合成できます。
+リソースを解放するとき、解放操作それ自身の間に発生しうるエラーのケアも
+しなければいけないことにも注意してください。
+例えば上のコードでやっているように、<code>.handleErrorWith</code>呼び出しによってケアします。
+この場合は単にエラーを無視しているのですが、通常であれば少なくともログを取るべきです。
+しばしば、<code>.attempt.void</code>が同じように「エラーを飲み込んで無視する」振る舞いに使われているところを
+皆さんも目にするでしょう。</p>
 <p>Optionally we could have used <code>Resource.fromAutoCloseable</code> to define our
 resources, that method creates <code>Resource</code> instances over objects that implement the
 <code>java.lang.AutoCloseable</code> interface without having to define how the resource is
 released. So our <code>inputStream</code> function would look like this:</p>
+<p>任意ですが、<code>Resouce.fromAutoCloseable</code>を使ってリソースを定義することもできたでしょう。
+このメソッドは<code>java.lang.AutoCloseable</code>インターフェースを実装するオブジェクト上の
+<code>Resource</code>インスタンスを、リソースが解放される方法を定義する必要なく作成します。
+そのため<code>inputStream</code>関数は次のようになったでしょう。</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect.{<span class="hljs-type">IO</span>, <span class="hljs-type">Resource</span>}
 <span class="hljs-keyword">import</span> java.io.{<span class="hljs-type">File</span>, <span class="hljs-type">FileInputStream</span>}
 
@@ -193,7 +278,10 @@ would happen if the closing operation throws an exception. Also it could be that
 we want to be aware when closing operations are being run, for example using
 logs. In contrast, using <code>Resource.make</code> allows to easily control the actions
 of the release phase.</p>
+<p>このコードのほうが遥かにシンプルですが、
+このコードでは閉じる操作が例外を投げたときに何が起こるかコントロールすることができません。</p>
 <p>Let's go back to our <code>copy</code> function, which now looks like this:</p>
+<p><code>copy</code>関数の話に戻りましょう。これは次のようになります：</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect.{<span class="hljs-type">IO</span>, <span class="hljs-type">Resource</span>}
 <span class="hljs-keyword">import</span> java.io._
 
@@ -215,11 +303,21 @@ any of the streams could not be obtained, then <code>transfer</code> will not be
 better, because of <code>Resource</code> semantics, if there is any problem opening the
 input file then the output file will not be opened.  On the other hand, if there
 is any issue opening the output file, then the input stream will be closed.</p>
+<p>新しいメソッド<code>transfer</code>は、リソース（ストリーム）が取得できたら、実際のデータコピーを行います。
+ストリームがもう必要なくなったら、<code>transfer</code>の結果（成功または失敗）によらず、それらは閉じられます。
+もしストリームのどちらかでも取得ができなかったら、そのときは<code>transfer</code>が走りません。
+もっと良いことに、<code>Resource</code>のセマンティクスのおかげで、
+入力ファイルのオープンで問題が生じていたら出力ファイルはオープンされません。
+一方で、出力ファイルのオープンで問題が生じたら、入力ファイルはクローズされます。</p>
 <h3><a class="anchor" aria-hidden="true" id="what-about-bracket"></a><a href="#what-about-bracket" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>What about <code>bracket</code>?</h3>
 <p>Now, if you are familiar with cats-effect's <code>Bracket</code> you may be wondering why
 we are not using it as it looks so similar to <code>Resource</code> (and there is a good
 reason for that: <code>Resource</code> is based on <code>bracket</code>). Ok, before moving forward it
 is worth taking a look at <code>bracket</code>.</p>
+<p>いま、もしあなたがcats-effectの<code>Bracket</code>に親しみがあれば、
+なぜそれを使わないんだろうか、と考えているかもしれません。
+<code>Resource</code>に似ていますからね（そう考える良い理由もあります：<code>Resource</code>は<code>bracket</code>に基づいています）。
+いいでしょう、次に進む前に、<code>bracket</code>について見ておく価値はあります。</p>
 <p>There are three stages when using <code>bracket</code>: <em>resource acquisition</em>, <em>usage</em>,
 and <em>release</em>. Each stage is defined by an <code>IO</code> instance.  A fundamental
 property is that the <em>release</em> stage will always be run regardless whether the
@@ -228,6 +326,13 @@ execution. In our case, in the <em>acquisition</em> stage we would create the st
 then in the <em>usage</em> stage we will copy the contents, and finally in the release
 stage we will close the streams.  Thus we could define our <code>copy</code> function as
 follows:</p>
+<p><code>bracket</code>の使用には3つの段階があります：<em>リソース取得</em>、<em>使用</em>、そして<em>解放</em>です。
+各段階は<code>IO</code>インスタンスによって定義されます。
+基本となる性質は、<em>使用</em>段階が正しく終わったか実行時に例外が投げられたかによらず、
+<em>解放</em>段階は常に走る、という点です。
+私達のケースでは、<em>取得</em>段階でストリームを作成して、次いで<em>使用</em>段階で内容をコピーして、
+最後に解放ステージでストリームを閉じるでしょう。
+したがって私達は<code>copy</code>関数を次のように定義することもできました：</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect.<span class="hljs-type">IO</span>
 <span class="hljs-keyword">import</span> cats.syntax.all._  
 <span class="hljs-keyword">import</span> java.io._  
@@ -269,6 +374,21 @@ But, in a way, that's precisely what we do when we <code>flatMap</code> instance
 <code>Resource</code>. And the code looks cleaner too. So, while using <code>bracket</code> directly
 has its place, <code>Resource</code> is likely to be a better choice when dealing with
 multiple resources at once.</p>
+<p>新しい<code>copy</code>の定義は、<code>inputOutputStreams</code>が必要ないので全体としては短くなったものの、より複雑です。
+しかし新しい発見もあります。
+<code>bracket</code>を使うと、もし最初の段階でリソースの取得に問題があれば、解放の段階が走りません。
+いま、上記のコードでは、まずオリジンファイルが、次にデスティネーションファイルがオープンされます
+（<code>tupled</code>は単に両方の<code>IO</code>インスタンスを単一のものに再構成しているだけです）。
+それでは、オリジンファイルをオープンするとき（<em>つまり</em><code>inIO</code>の評価時）には成功して、
+デスティネーションファイルのオープン時（<em>つまり</em><code>outIO</code>の評価時）には例外が発生したとしたら、
+一体何が起きるでしょう？
+この場合、オリジンストリームはクローズされません！
+これを解決するため、私達はまず最初のストリームをひとつの<code>bracket</code>呼び出しで取得し、
+次に2つ目のストリームを最初の呼び出し内で別の<code>bracket</code>呼び出しをすることで取得します。
+しかし、これはある意味ちょうど<code>Resource</code>インスタンスの<code>flatMap</code>でやっていたことです。
+そしてコードはよりクリーンにも見えます。
+なので、<code>bracket</code>を直接使うとよい場面もある一方で、複数のリソースを一度に扱うときには
+<code>Resource</code>のほうが良い選択になりがちです。</p>
 <h3><a class="anchor" aria-hidden="true" id="copying-data"></a><a href="#copying-data" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Copying data</h3>
 <p>Finally we have our streams ready to go! We have to focus now on coding
 <code>transfer</code>. That function will have to define a loop that at each iteration
@@ -277,6 +397,14 @@ contents into the output stream. At the same time, the loop will keep a counter
 of the bytes transferred. To reuse the same buffer we should define it outside
 the main loop, and leave the actual transmission of data to another function
 <code>transmit</code> that uses that loop. Something like:</p>
+<p>ついに、ストリームの準備ができました！
+いまや<code>transfer</code>のコーディングに集中するときです。
+この関数はループを定義し、各反復では入力ストリームのデータをバッファに読み込み、
+バッファの内容を出力ストリームに書き出さねばならないでしょう。
+同時に、このループは輸送されたバイト数のカウンタを管理するでしょう。
+バッファは、同じものを再利用するために、メインループの外で定義し、
+実際のデータ輸送はループを使うまた別の関数<code>transmit</code>に任せるべきです。
+次のように：</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect.<span class="hljs-type">IO</span>
 <span class="hljs-keyword">import</span> cats.syntax.all._  
 <span class="hljs-keyword">import</span> java.io._  
@@ -298,6 +426,13 @@ but when dealing with input/output actions it is advised that you instead use
 <code>IO.blocking(action)</code>. This way we help cats-effect to better plan how to assign
 threads to actions. We will return to this topic when we introduce <em>fibers</em>
 later on in this tutorial.</p>
+<p><code>transmit</code>を見て、入出力アクションの両方が、<code>IO</code>でカプセル化（中断）されたアクションを返却する
+<code>IO.blocking</code>呼び出しで作成されることを観察してください。
+<code>IO(action)</code>を呼び出すことでアクションを単に埋め込むこともできますが、
+入出力アクションを扱う場合には代わりに<code>IO.blocking(action)</code>を使ったほうが良いです。
+こうすると、どうやってスレッドをアクションに割り当てるか、cats-effectが
+より良い計画を立てるための助けになります。
+このチュートリアルの後の方で<em>ファイバー</em>を導入するとき、またこの話題に戻ってきます。</p>
 <p><code>IO</code> being a monad, we can sequence our new <code>IO</code> instances using a
 for-comprehension to create another <code>IO</code>. The for-comprehension loops as long as
 the call to <code>read()</code> does not return a negative value that would signal that the
@@ -308,18 +443,36 @@ that after each write operation we recursively call <code>transmit</code> again,
 <code>IO</code> is stack safe we are not concerned about stack overflow issues. At each
 iteration we increase the counter <code>acc</code> with the amount of bytes read at that
 iteration.</p>
+<p><code>IO</code>はモナドなので、私達の新しい<code>IO</code>インスタンスをfor内包表記で並べて別の<code>IO</code>を作成できます。
+for内包表記は<code>read()</code>がストリームの終端に達したことを知らせる負の値を返さない限りループします。
+<code>&gt;&gt;</code>はCatsの演算子で、2つの操作を、1つ目の出力が2つ目に必要ないような場合に、
+逐次的に並べるためのものです（<em>つまり</em><code>first.flatMap(_ =&gt; second)</code>と等価です）。
+上のコードでは、各書き出し操作のあとで再帰的に<code>transmit</code>を再び呼び出しますが、
+<code>IO</code>はスタック安全なのでスタックオーバーフロー問題を気にする必要はありません。
+各反復では、カウンター<code>acc</code>を、その反復で読み出されたバイト数だけ増やします。</p>
 <p>We are making progress, and already have a version of <code>copy</code> that can be used.
 If any exception is raised when <code>transfer</code> is running, then the streams will be
 automatically closed by <code>Resource</code>. But there is something else we have to take
 into account: <code>IO</code> instances execution can be <strong><em>canceled!</em></strong> And cancelation
 should not be ignored, as it is a key feature of cats-effect. We will discuss
 cancelation in the next section.</p>
+<p>私達は前へ進んでおり、使えるバージョンの<code>copy</code>を既に持っています。
+<code>transfer</code>が走っているときに何らかの例外が起きると、
+ストリームは<code>Resource</code>によって自動的にクローズされます。
+しかし他にも考慮しなければならないことがあります：<code>IO</code>インスタンスの実行は<strong><em>キャンセル</em></strong>できるのです！
+そしてキャンセルはcats-effectの鍵となる機能なので、それが無視されることはありえません。
+次の節ではキャンセルについて議論します。</p>
 <h3><a class="anchor" aria-hidden="true" id="dealing-with-cancelation"></a><a href="#dealing-with-cancelation" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Dealing with cancelation</h3>
 <p>Cancelation is a powerful but non-trivial cats-effect feature. In cats-effect,
 some <code>IO</code> instances can be canceled ( <em>e.g.</em> by other <code>IO</code> instances running
 concurrently) meaning that their evaluation will be aborted. If the programmer is
 careful, an alternative <code>IO</code> task will be run under cancelation, for example to
 deal with potential cleaning up activities.</p>
+<p>キャンセルはcats-effectの強力で非自明な機能です。
+cats-effectでは、<code>IO</code>インスタンスは（<em>例えば</em>並行に走っている別の<code>IO</code>インスタンスによって）
+キャンセルでき、評価は中止されます。
+プログラマーが注意深ければ、例えば潜在的なクリーンアップに対処するために、
+キャンセルに対して代わりの<code>IO</code>タスクが走ることになるでしょう。</p>
 <p>Thankfully, <code>Resource</code> makes dealing with cancelation an easy task. If the <code>IO</code>
 inside a <code>Resource.use</code> is canceled, the release section of that resource is
 run. In our example this means the input and output streams will be properly
@@ -328,19 +481,39 @@ In the case of our <code>transmit</code> function this means the execution would
 interrupted only between two calls to <code>IO.blocking</code>. If we want the execution of
 an IO instance to be interrupted when canceled, without waiting for it to
 finish, we must instantiate it using <code>IO.interruptible</code>.</p>
+<p>ありがたいことに、<code>Resource</code>はキャンセルへの対処を簡単にします。
+<code>Resource.use</code>内の<code>IO</code>がキャンセルされたら、そのリソースの解放セクションが走ります。
+このことは、私達の例において、入出力ストリームが適切にクローズされることを意味します。
+さらに、cats-effectは<code>IO.blocking</code>インスタンス内のコードをキャンセルしません。
+このことは、関数<code>transmit</code>において、実行が割り込まれるのは
+<code>IO.blocking</code>の呼び出し2つの間に限ることを意味します。
+もしIOインスタンスの実行が、キャンセルされたときに完了を待たず割り込まれてほしいなら、
+<code>IO.interruptible</code>を使ってそのIOインスタンスを作らなければなりません。</p>
 <h3><a class="anchor" aria-hidden="true" id="ioapp-for-our-final-program"></a><a href="#ioapp-for-our-final-program" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><code>IOApp</code> for our final program</h3>
+<p>最終版プログラムの<code>IOApp</code></p>
 <p>We will create a program that copies files, this program only takes two
 parameters: the name of the origin and destination files. For coding this
 program we will use <code>IOApp</code> as it allows to maintain purity in our definitions
 up to the program main function.</p>
+<p>私達はファイルをコピーするプログラムを作成します。
+このプログラムは2つのパラメータしか取りません：オリジンファイルとデスティネーションファイルの名前です。
+このプログラムのコーディングのために、私達は<code>IOApp</code>を使います。
+定義の純粋性をプログラムのメイン関数のレベルまで確保することを可能にするので。</p>
 <p><code>IOApp</code> is a kind of 'functional' equivalent to Scala's <code>App</code>, where instead of
 coding an effectful <code>main</code> method we code a pure <code>run</code> function. When executing
 the class a <code>main</code> method defined in <code>IOApp</code> will call the <code>run</code> function we
 have coded. Any interruption (like pressing <code>Ctrl-c</code>) will be treated as a
 cancelation of the running <code>IO</code>.</p>
+<p><code>IOApp</code>はScalaの<code>App</code>に対する「関数的な」対応物の一つで、
+ここではeffectfulな<code>main</code>メソッドをコーディングする代わりに純粋な<code>run</code>関数を書きます。
+このクラスを実行すると、<code>IOApp</code>に定義された<code>main</code>メソッドは、私達が書いた<code>run</code>関数を呼び出します。
+どんな割り込み（例えば<code>Ctrl-c</code>を押すなど）も実行中の<code>IO</code>のキャンセルとして扱われます。</p>
 <p>When coding <code>IOApp</code>, instead of a <code>main</code> function we have a <code>run</code> function,
 which creates the <code>IO</code> instance that forms the program. In our case, our <code>run</code>
 method can look like this:</p>
+<p><code>IOApp</code>をコーディングするとき、私達は<code>main</code>関数の代わりに<code>run</code>関数を持っており、
+この関数はプログラムを成す<code>IO</code>インスタンスを作成します。
+私達のケースでは、<code>run</code>メソッドはこんな感じになるかもしれません：</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect._
 <span class="hljs-keyword">import</span> java.io.<span class="hljs-type">File</span>
 
@@ -364,10 +537,17 @@ method can look like this:</p>
 arguments, an error is raised. As <code>IO</code> implements <code>MonadError</code> we can at any
 moment call to <code>IO.raiseError</code> to interrupt a sequence of <code>IO</code> operations. The log
 message is printed by means of handy <code>IO.println</code> method.</p>
+<p><code>run</code>が渡された<code>args</code>リストを検証する方法に注意してください。
+引数が2つより少ないときはエラーが発生します。
+<code>IO</code>は<code>MonadError</code>を実装しているので、私達はいつでも<code>IO.raiseError</code>を呼び出して
+<code>IO</code>操作の逐次実行に割り込むことができます。
+ログメッセージは便利な<code>IO.println</code>メソッドによってプリントされます。</p>
 <h4><a class="anchor" aria-hidden="true" id="copy-program-code"></a><a href="#copy-program-code" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Copy program code</h4>
 <p>You can check the <a href="https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFile.scala">final version of our copy program
 here</a>.</p>
+<p>コピープログラムの最終版は<a href="https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFile.scala">ここ</a>で確認できます。</p>
 <p>The program can be run from <code>sbt</code> just by issuing this call:</p>
+<p>プログラムは<code>sbt</code>から次の呼び出しをするだけで実行できます：</p>
 <pre><code class="hljs css language-scala">&gt; runMain catseffecttutorial.<span class="hljs-type">CopyFile</span> origin.txt destination.txt
 </code></pre>
 <p>It can be argued that using <code>IO{java.nio.file.Files.copy(...)}</code> would get an
@@ -378,6 +558,13 @@ resource release (streams closing) even under such circumstances. The same will
 apply if the <code>copy</code> function is run from other modules that require its
 functionality. If the <code>IO</code> returned by this function is canceled while being
 run, still resources will be properly released.</p>
+<p><code>IO{java.nio.file.Files.copy(...)}</code>を使えば私達の関数の純粋性と同じ特性を持った<code>IO</code>が
+手に入ると主張されるかもしれません。
+しかし違いがあるのです：私達の<code>IO</code>は安全にキャンセルできます！
+なので、ユーザーは走ってるコードを、例えば<code>Ctrl-c</code>を押すことで好きなときに止めることができ、
+私達のコードはそのような状況においてさえも安全なリソースの解放（ストリームのクローズ）を処理できます。
+同じことが、<code>copy</code>関数の機能を必要とする別のモジュールからこの関数が呼び出されたときにも当てはまります。
+この関数によって返される<code>IO</code>が、走っているときにキャンセルされても、リソースは適切に解放されるのです。</p>
 <h3><a class="anchor" aria-hidden="true" id="polymorphic-cats-effect-code"></a><a href="#polymorphic-cats-effect-code" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Polymorphic cats-effect code</h3>
 <p>There is an important characteristic of <code>IO</code> that we should be aware of. <code>IO</code> is
 able to suspend side-effects asynchronously thanks to the existence of an
@@ -386,12 +573,26 @@ side-effects synchronously. On top of that <code>Async</code> extends typeclasse
 <code>MonadCancel</code>, <code>Concurrent</code> or <code>Temporal</code>, which bring the possibility to cancel
 an <code>IO</code> instance, to run several <code>IO</code> instances concurrently, to timeout an
 execution, to force the execution to wait (sleep), etc.</p>
+<p>気づいておくべき重要な特性が<code>IO</code>にはあります。
+<code>IO</code>は副作用を非同期的にサスペンドすることが可能です。
+これは<code>Async[IO]</code>のインスタンスが存在するためです。
+<code>Async</code>は<code>Sync</code>を継承しているので、<code>IO</code>は同期的に副作用をサスペンドすることもできます。
+それに加え、<code>Aync</code>は<code>MonadCancel</code>, <code>Concurrent</code>, <code>Temporal</code>のような型クラスを継承しており、
+これによって、<code>IO</code>インスタンスをキャンセルしたり、複数の<code>IO</code>インスタンスを並行に走らせたり、
+実行をタイムアウトしたり、実行を待機（スリープ）させたり、といったことが可能になります。</p>
 <p>So well, <code>Sync</code> and <code>Async</code> can suspend side effects. We have used <code>IO</code> so far
 mostly for that purpose. Now, going back to the code we created to copy files,
 could have we coded its functions in terms of some <code>F[_]: Sync</code> and <code>F[_]: Async</code> instead of <code>IO</code>?  Truth is we could, see for example how we would define
 a polymorphic version of our <code>transfer</code> function with this approach, just by
 replacing any use of <code>IO</code> by calls to the <code>delay</code> and <code>pure</code> methods of the
 <code>Sync[F]</code> instance:</p>
+<p>いいでしょう。<code>Sync</code>と<code>Async</code>は副作用をサスペンドできます。
+私達はここまで、主にそのために<code>IO</code>を使ってきました。
+それでは、ファイルをコピーするために書いたコードに戻るとして、
+<code>IO</code>の代わりに<code>F[_]: Sync</code>や<code>F[_]: Async</code>を使ってコーディングすることはできたでしょうか？
+実のところそれは可能で、多相的なバージョンの<code>transfer</code>関数が、
+このアプローチによってどう定義されるか見てください。
+単に<code>IO</code>を<code>Sync[F]</code>インスタンスの<code>delay</code>と<code>pure</code>メソッドの呼び出しに置き換えるだけです：</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect.<span class="hljs-type">Sync</span>
 <span class="hljs-keyword">import</span> cats.syntax.all._
 <span class="hljs-keyword">import</span> java.io._
@@ -405,6 +606,9 @@ replacing any use of <code>IO</code> by calls to the <code>delay</code> and <cod
 </code></pre>
 <p>We leave as an exercise to code the polymorphic versions of <code>inputStream</code>,
 <code>outputStream</code>, <code>inputOutputStreams</code>, <code>transfer</code> and <code>copy</code> functions.</p>
+<p>多相バージョンの関数<code>inputStream</code>,
+<code>outputStream</code>, <code>inputOutputStreams</code>, <code>transfer</code> そして <code>copy</code> をコーディングするのは
+練習問題とします。</p>
 <pre><code class="hljs css language-scala"><span class="hljs-keyword">import</span> cats.effect._
 <span class="hljs-keyword">import</span> java.io._
 
@@ -418,35 +622,67 @@ replacing any use of <code>IO</code> by calls to the <code>delay</code> and <cod
 <p>Only in our <code>main</code> function we will set <code>IO</code> as the final <code>F</code> for our program.
 To do so, of course, a <code>Sync[IO]</code> instance must be in scope, but that instance
 is brought transparently by <code>IOApp</code> so we do not need to be concerned about it.</p>
+<p>私達のプログラムで<code>IO</code>を最終的な<code>F</code>としてセットするのは<code>main</code>関数の中だけです。
+そうするためにはもちろん、<code>Sync[IO]</code>のインスタンスがスコープに入っていなければなりませんが、
+そのインスタンスは<code>IOApp</code>によって透過的にもたらされるので、気にする必要はありません。</p>
 <p>During the remainder of this tutorial we will use polymorphic code, only falling
 to <code>IO</code> in the <code>run</code> method of our <code>IOApp</code>s. Polymorphic code is less
 restrictive, as functions are not tied to <code>IO</code> but are applicable to any <code>F[_]</code>
 as long as there is an instance of the type class required (<code>Sync[F[_]]</code> ,
 <code>Async[F[_]]</code>...) in scope. The type class to use will depend on the
 requirements of our code.</p>
+<p>このチュートリアルの残りでは、多相的なコードだけを使い、
+<code>IOApp</code>の<code>run</code>メソッドにおいてのみ<code>IO</code>に収まります。
+多相的なコードは制限が少ないです。
+関数が<code>IO</code>に紐付いておらず、必要な型クラス (<code>Sync[F[_]]</code>, <code>Async[F[_]]</code> ...)
+のインスタンスがスコープに存在する限り任意の<code>F[_]</code>に適用可能であるので。
+使用する型クラスは私達のコードの要件よって変わるでしょう。</p>
 <h4><a class="anchor" aria-hidden="true" id="copy-program-code-polymorphic-version"></a><a href="#copy-program-code-polymorphic-version" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Copy program code, polymorphic version</h4>
+<p>コピープログラム、多相的バージョン</p>
 <p>The polymorphic version of our copy program in full is available
 <a href="https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFilePolymorphic.scala">here</a>.</p>
+<p>多相バージョンのコピープログラムは全体が
+<a href="https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFilePolymorphic.scala">ここ</a>
+で利用可能です。</p>
 <h3><a class="anchor" aria-hidden="true" id="exercises-improving-our-small-io-program"></a><a href="#exercises-improving-our-small-io-program" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Exercises: improving our small <code>IO</code> program</h3>
+<p>練習問題：私達の小さな<code>IO</code>プログラムを改善</p>
 <p>To finalize we propose you some exercises that will help you to keep improving
 your IO-kungfu:</p>
+<p>仕上げとして、あなたのIO-カンフー [訳注：厳しい訓練によって得られるスキルをカンフーと呼ぶことがあります]
+を向上する助けになるであろう練習問題を提案します：</p>
 <ol>
-<li>Modify the <code>IOApp</code> so it shows an error and abort the execution if the origin
+<li><p>Modify the <code>IOApp</code> so it shows an error and abort the execution if the origin
 and destination files are the same, the origin file cannot be open for
 reading or the destination file cannot be opened for writing. Also, if the
 destination file already exists, the program should ask for confirmation
-before overwriting that file.</li>
-<li>Modify <code>transmit</code> so the buffer size is not hardcoded but passed as
-parameter.</li>
-<li>Test safe cancelation, checking that the streams are indeed being properly
+before overwriting that file.</p></li>
+<li><p>Modify <code>transmit</code> so the buffer size is not hardcoded but passed as
+parameter.</p></li>
+<li><p>Test safe cancelation, checking that the streams are indeed being properly
 closed. You can do that just by interrupting the program execution pressing
 <code>Ctrl-c</code>. To make sure you have the time to interrupt the program, introduce
 a delay of a few seconds in the <code>transmit</code> function (see <code>IO.sleep</code>). And to
 ensure that the release functionality in the <code>Resource</code>s is run you can add
-some log message there (see <code>IO.println</code>).</li>
-<li>Create a new program able to copy folders. If the origin folder has
+some log message there (see <code>IO.println</code>).</p></li>
+<li><p>Create a new program able to copy folders. If the origin folder has
 subfolders, then their contents must be recursively copied too. Of course the
-copying must be safely cancelable at any moment.</li>
+copying must be safely cancelable at any moment.</p></li>
+<li><p><code>IOApp</code>を修正して、次の場合にエラーを表示し、実行をやめるようにしてください。
+オリジンとデスティネーションファイルが同じ、またはオリジンファイルが読み込み用にオープンできない、
+またはデスティネーションファイルが書き込みようにオープンできない。
+また、デスティネーションファイルが既に存在しているなら、プログラムは上書きする前に確認を求めるべきです。</p></li>
+<li><p><code>transmit</code>を修正して、バッファサイズがハードコードされるのではなく、
+パラメータとして渡されるようにしてください。</p></li>
+<li><p>実際にストリームが適切にクローズされることを確認して、
+安全にキャンセルできることをテストしてください。
+単にプログラム実行を<code>Ctrl-c</code>によって割り込むだけでできます。
+プログラムに割り込める時間があるようにするため、
+<code>transmit</code>関数に数秒のディレイを入れてください（<code>IO.sleep</code>を見よ）。
+また、<code>Resource</code>の解放機能が走ることを保証するためには、
+ログメッセージを追加しても良いでしょう（<code>IO.println</code>を見よ）。</p></li>
+<li><p>フォルダをコピーするための新しいプログラムを作成してください。
+オリジンフォルダがサブフォルダを持っているなら、その中身も再帰的にコピーされなければなりません。
+もちろん、コピーはいつでも安全にキャンセルできなければなりません。</p></li>
 </ol>
 <h2><a class="anchor" aria-hidden="true" id="a-nameproducerconsumeraproducer-consumer-problem---concurrency-and-fibers"></a><a href="#a-nameproducerconsumeraproducer-consumer-problem---concurrency-and-fibers" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><a name="producerconsumer"></a>Producer-consumer problem - concurrency and fibers</h2>
 <p>The <em>producer-consumer</em> pattern is often found in concurrent setups. Here one or
