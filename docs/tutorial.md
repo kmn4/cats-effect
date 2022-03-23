@@ -13,9 +13,22 @@ handling _resources_ and _cancelation_ in the process. That should help us to
 flex our muscles. [The second one](#producerconsumer) implements a solution to
 the producer-consumer problem to introduce cats-effect _fibers_.
 
+このチュートリアルはcats-effectが初めての人が主要な概念に慣れ親しむことができるように、
+コード例を使って補助することを、learn-by-doingな方法で試みます。
+2つの小さなプログラムが、それぞれ1つの節を使ってコーディングされます。
+[1つ目](#copyingfiles)はあるファイルの中身を別のファイルにコピーしますが、
+その過程で_リソース_と_キャンセル_を安全に扱います。
+肩慣らしの助けになるはずです。
+[2つ目](#producerconsumer)はproducer-consumer問題の解を実装することで、
+cats-effectの_fiber_を導入します。
+
 This tutorial assumes some familiarity with functional programming. It is
 also a good idea to read the cats-effect documentation prior to starting this
 tutorial, at least the [Getting Started page](getting-started.md).
+
+このチュートリアルは関数型プログラミングにいくらか親しみがあることを仮定します。
+このチュートリアルを始める前に、cats-effectのドキュメント、
+少なくとも[Getting Started ページ](getting-started.md)を読むのもいいアイデアでしょう。
 
 Please read this tutorial as training material, not as a best-practices
 document. As you gain more experience with cats-effect, you will probably find
@@ -28,7 +41,19 @@ to find powerful network and file abstractions that integrate with cats-effect.
 But that is beyond the purpose of this tutorial, which focuses solely on
 cats-effect.
 
+どうかこのチュートリアルをトレーニング資料として読んでください。
+ベストプラクティスドキュメントではなくて。
+cats-effectの経験を積むにしたがって、
+ここで提示される問題を処理するためのあなた自身の解をおそらくは見つけるでしょう。
+また、cats-effectをファイルコピーや（produce-consumer問題のような）基礎的な並行性パターンの
+実装に使うのは 'getting things done' アプローチに適しているものの、
+より複雑なシステム/状況/要件に対しては、[fs2](http://fs2.io) や [Monix](https://monix.io)
+を確認して、cats-effectと統合された強力なネットワークとファイルの抽象化を見つけたいと思うかもしれません。
+しかしこれらはこのチュートリアルの目的を超えます。cats-effectのみに集中したいので。
+
 That said, let's go!
+
+前置きがすんだところで、それじゃあ始めましょうか！
 
 ## Setting things up
 
@@ -38,6 +63,12 @@ all the software that will be developed during this tutorial (branch
 `series/3.x`). It uses `sbt` as the build tool. To ease coding, compiling and
 running the code snippets in this tutorial, it is recommended to use the same
 `build.sbt`, or at least one with the same dependencies and compilation options:
+
+この[Githubレポジトリ](https://github.com/lrodero/cats-effect-tutorial/tree/series/3.x)
+はこのチュートリアルで開発される全てのソフトウェアを含んでいます (ブランチ`series/3.x`)。
+`sbt`をビルドツールとして使用します。
+このチュートリアルのコードスニペットを楽にコーディング・コンパイル・実行するために、
+同じ`build.sbt`か、少なくとも同じ依存性とコンパイルオプションなものを使うことをお勧めします：
 
 ```scala
 name := "cats-effect-tutorial"
@@ -59,6 +90,9 @@ scalacOptions ++= Seq(
 Also make sure that you use a recent version of `sbt`, at least `1.4.2`. You can
 set the `sbt` version in `project/build.properties` file:
 
+最近のバージョンの`sbt`、少なくとも`1.4.2`以降のものを使うようにもしてください。
+`sbt`バージョンは`project/build.properties`ファイルで設定できます：
+
 ```scala
 sbt.version=1.4.2
 ```
@@ -67,11 +101,21 @@ Almost all code snippets in this tutorial can be pasted and compiled right in
 the scala console of the project defined above (or any project with similar
 settings).
 
+このチュートリアルのほぼ全てのコードスニペットは、
+上で定義した（または似た設定の）プロジェクトのScalaコンソール内に
+ペーストしてコンパイルすることができます。
+
 ## <a name="copyingfiles"></a>Copying files - basic concepts, resource handling and cancelation
+
+ファイルのコピー - 基礎概念、リソースの扱いとキャンセル
 
 Our goal is to create a program that copies files. First we will work on a
 function that carries out such a task, and then we will create a program that can be
 invoked from the shell and uses that function.
+
+私達の目標は、ファイルをコピーするプログラムを作成することです。
+私達はまずそのようなタスクを実行する関数に取り組み、
+その次にシェルから呼び出されてその関数を使うプログラムを作成します。
 
 First of all we must code the function that copies the content from a file to
 another file. The function takes the source and destination files as parameters.
@@ -87,7 +131,25 @@ the `IO` and so no `try` (or the like) needs to be used when using the function,
 instead the `IO` evaluation will fail and the `IO` instance will carry the error
 raised.
 
+まず、あるファイルから別のファイルへ内容をコピーする関数をコーディングしなければなりません。
+この関数はソースとデスティネーションのファイルをパラメータとして受けとります。
+しかし今やっているのは関数型プログラミングです！
+なのでこの関数の呼び出しは何もコピーをしてはならず、
+代わりに全ての副作用をカプセル化した`IO`インスタンスを返します
+（ここでの副作用は、ファイルを開いたり閉じたりすること、
+その中身を読んだり書き込んだりすることを指します）。そうすると_純粋性_が保たれます。
+その`IO`インスタンスが評価されたときのみ、それら全ての副作用的なアクションが実行されます。
+私達の実装ではこの`IO`インスタンスは実行時にコピーされたバイト数を返しますが、
+これは単に設計上の決定でしかありません。
+もちろんエラーは起こりうるのですが、
+どんな`IO`を使うときもそれらは`IO`インスタンスタンスに埋め込まれるべきです。
+つまり、`IO`の外で例外が発生することはなく、
+したがってこの関数を使うにあたって`try`のようなものは一切使う必要がありません。
+代わりに`IO`の評価が失敗して、`IO`インスタンスが発生したエラーを持つことになります。
+
 Now, the signature of our function looks like this:
+
+いま、私達の関数のシグネチャはこんな感じになります：
 
 ```scala mdoc:compile-only
 import cats.effect.IO
@@ -102,7 +164,18 @@ instance will return the bytes copied in a `Long` (note that `IO` is
 parameterized by the return type). Now, let's start implementing our function.
 First, we need to open two streams that will read and write file contents.
 
+何も怖いことはありませんね？
+前に言ったとおり、この関数は単に`IO`インスタンスを返します。
+走らせたら、全ての副作用が実際に実行されて、
+`IO`インスタンスはコピーされたバイト数を`Long`の中に返します
+（`IO`が返却値の型によってパラメタライズされていることに注意してください）。
+それでは、私達の関数の実装を始めましょう。
+まず、ファイルの中身を読み書きするための2つのストリームを開く必要があります。
+
 ### Acquiring and releasing `Resource`s
+
+`Resource`の取得と開放
+
 We consider opening a stream to be a side-effectful action, so we have to
 encapsulate those actions in their own `IO` instances. We can just embed the
 actions by calling `IO(action)`, but when dealing with input/output actions it
@@ -110,8 +183,20 @@ is advised to use instead `IO.blocking(action)`. This way we help cats-effect to
 better plan how to assign threads to actions. We will return to this topic when
 we introduce _fibers_ later on in this tutorial.
 
+ストリームを開くことは副作用を伴うアクションだと考えられるので、
+これらのアクションはそれ自身`IO`インスタンスにカプセル化する必要があります。
+アクションを`IO(action)`の形の呼び出しで埋め込むこともできるのですが、
+入出力アクションを扱うときは代わりに`IO.blocking(action)`を使うほうが良いです。
+こうすると、どうやってスレッドをアクションに割り当てるか、cats-effectが
+より良い計画を立てるための助けになります。
+このチュートリアルの後の方で_ファイバー_を導入するとき、またこの話題に戻ってきます。
+
 Also, we will make use of cats-effect `Resource`. It allows to orderly create,
 use and then release resources. See this code:
+
+それから、私達はcats-effectの`Resource`を利用します。
+これはリソースの作成、使用、開放を行儀よく行うことを可能にします。
+このコードを見てください：
 
 ```scala mdoc:compile-only
 import cats.effect.{IO, Resource}
@@ -152,10 +237,28 @@ ignore the error, but normally it should be at least logged. Often you will see
 that `.attempt.void` is used to get the same 'swallow and ignore errors'
 behavior.
 
+私達は、なにがなんでも、使い終わったらストリームが閉じられることを保証したいです。
+これこそ、私達が`Resource`を関数`inputStream`と`outputStream`の両方で使っている理由であり、
+各関数はストリームの開閉アクションをカプセル化した`Resource`を一つ返します。
+`inputOutputStreams`は両方のリソースを一つの`Resource`インスタンスにカプセル化します。
+このインスタンスは両方のストリームが無事に作成されたとき、またそのときに限り利用可能になります。
+上のコードで見られるように、`Resource`インスタンスはfor内包表記で合成できます。
+リソースを解放するとき、解放操作それ自身の間に発生しうるエラーのケアも
+しなければいけないことにも注意してください。
+例えば上のコードでやっているように、`.handleErrorWith`呼び出しによってケアします。
+この場合は単にエラーを無視しているのですが、通常であれば少なくともログを取るべきです。
+しばしば、`.attempt.void`が同じように「エラーを飲み込んで無視する」振る舞いに使われているところを
+皆さんも目にするでしょう。
+
 Optionally we could have used `Resource.fromAutoCloseable` to define our
 resources, that method creates `Resource` instances over objects that implement the
 `java.lang.AutoCloseable` interface without having to define how the resource is
 released. So our `inputStream` function would look like this:
+
+任意ですが、`Resouce.fromAutoCloseable`を使ってリソースを定義することもできたでしょう。
+このメソッドは`java.lang.AutoCloseable`インターフェースを実装するオブジェクト上の
+`Resource`インスタンスを、リソースが解放される方法を定義する必要なく作成します。
+そのため`inputStream`関数は次のようになったでしょう。
 
 ```scala mdoc:compile-only
 import cats.effect.{IO, Resource}
@@ -171,7 +274,12 @@ we want to be aware when closing operations are being run, for example using
 logs. In contrast, using `Resource.make` allows to easily control the actions
 of the release phase.
 
+このコードのほうが遥かにシンプルですが、
+このコードでは閉じる操作が例外を投げたときに何が起こるかコントロールすることができません。
+
 Let's go back to our `copy` function, which now looks like this:
+
+`copy`関数の話に戻りましょう。これは次のようになります：
 
 ```scala mdoc:compile-only
 import cats.effect.{IO, Resource}
@@ -197,11 +305,23 @@ better, because of `Resource` semantics, if there is any problem opening the
 input file then the output file will not be opened.  On the other hand, if there
 is any issue opening the output file, then the input stream will be closed.
 
+新しいメソッド`transfer`は、リソース（ストリーム）が取得できたら、実際のデータコピーを行います。
+ストリームがもう必要なくなったら、`transfer`の結果（成功または失敗）によらず、それらは閉じられます。
+もしストリームのどちらかでも取得ができなかったら、そのときは`transfer`が走りません。
+もっと良いことに、`Resource`のセマンティクスのおかげで、
+入力ファイルのオープンで問題が生じていたら出力ファイルはオープンされません。
+一方で、出力ファイルのオープンで問題が生じたら、入力ファイルはクローズされます。
+
 ### What about `bracket`?
 Now, if you are familiar with cats-effect's `Bracket` you may be wondering why
 we are not using it as it looks so similar to `Resource` (and there is a good
 reason for that: `Resource` is based on `bracket`). Ok, before moving forward it
 is worth taking a look at `bracket`.
+
+いま、もしあなたがcats-effectの`Bracket`に親しみがあれば、
+なぜそれを使わないんだろうか、と考えているかもしれません。
+`Resource`に似ていますからね（そう考える良い理由もあります：`Resource`は`bracket`に基づいています）。
+いいでしょう、次に進む前に、`bracket`について見ておく価値はあります。
 
 There are three stages when using `bracket`: _resource acquisition_, _usage_,
 and _release_. Each stage is defined by an `IO` instance.  A fundamental
@@ -211,6 +331,14 @@ execution. In our case, in the _acquisition_ stage we would create the streams,
 then in the _usage_ stage we will copy the contents, and finally in the release
 stage we will close the streams.  Thus we could define our `copy` function as
 follows:
+
+`bracket`の使用には3つの段階があります：_リソース取得_、_使用_、そして_解放_です。
+各段階は`IO`インスタンスによって定義されます。
+基本となる性質は、_使用_段階が正しく終わったか実行時に例外が投げられたかによらず、
+_解放_段階は常に走る、という点です。
+私達のケースでは、_取得_段階でストリームを作成して、次いで_使用_段階で内容をコピーして、
+最後に解放ステージでストリームを閉じるでしょう。
+したがって私達は`copy`関数を次のように定義することもできました：
 
 ```scala mdoc:compile-only
 import cats.effect.IO
@@ -256,6 +384,22 @@ But, in a way, that's precisely what we do when we `flatMap` instances of
 has its place, `Resource` is likely to be a better choice when dealing with
 multiple resources at once.
 
+新しい`copy`の定義は、`inputOutputStreams`が必要ないので全体としては短くなったものの、より複雑です。
+しかし新しい発見もあります。
+`bracket`を使うと、もし最初の段階でリソースの取得に問題があれば、解放の段階が走りません。
+いま、上記のコードでは、まずオリジンファイルが、次にデスティネーションファイルがオープンされます
+（`tupled`は単に両方の`IO`インスタンスを単一のものに再構成しているだけです）。
+それでは、オリジンファイルをオープンするとき（_つまり_`inIO`の評価時）には成功して、
+デスティネーションファイルのオープン時（_つまり_`outIO`の評価時）には例外が発生したとしたら、
+一体何が起きるでしょう？
+この場合、オリジンストリームはクローズされません！
+これを解決するため、私達はまず最初のストリームをひとつの`bracket`呼び出しで取得し、
+次に2つ目のストリームを最初の呼び出し内で別の`bracket`呼び出しをすることで取得します。
+しかし、これはある意味ちょうど`Resource`インスタンスの`flatMap`でやっていたことです。
+そしてコードはよりクリーンにも見えます。
+なので、`bracket`を直接使うとよい場面もある一方で、複数のリソースを一度に扱うときには
+`Resource`のほうが良い選択になりがちです。
+
 ### Copying data
 Finally we have our streams ready to go! We have to focus now on coding
 `transfer`. That function will have to define a loop that at each iteration
@@ -264,6 +408,15 @@ contents into the output stream. At the same time, the loop will keep a counter
 of the bytes transferred. To reuse the same buffer we should define it outside
 the main loop, and leave the actual transmission of data to another function
 `transmit` that uses that loop. Something like:
+
+ついに、ストリームの準備ができました！
+いまや`transfer`のコーディングに集中するときです。
+この関数はループを定義し、各反復では入力ストリームのデータをバッファに読み込み、
+バッファの内容を出力ストリームに書き出さねばならないでしょう。
+同時に、このループは輸送されたバイト数のカウンタを管理するでしょう。
+バッファは、同じものを再利用するために、メインループの外で定義し、
+実際のデータ輸送はループを使うまた別の関数`transmit`に任せるべきです。
+次のように：
 
 ```scala mdoc:compile-only
 import cats.effect.IO
@@ -289,6 +442,14 @@ but when dealing with input/output actions it is advised that you instead use
 threads to actions. We will return to this topic when we introduce _fibers_
 later on in this tutorial.
 
+`transmit`を見て、入出力アクションの両方が、`IO`でカプセル化（中断）されたアクションを返却する
+`IO.blocking`呼び出しで作成されることを観察してください。
+`IO(action)`を呼び出すことでアクションを単に埋め込むこともできますが、
+入出力アクションを扱う場合には代わりに`IO.blocking(action)`を使ったほうが良いです。
+こうすると、どうやってスレッドをアクションに割り当てるか、cats-effectが
+より良い計画を立てるための助けになります。
+このチュートリアルの後の方で_ファイバー_を導入するとき、またこの話題に戻ってきます。
+
 `IO` being a monad, we can sequence our new `IO` instances using a
 for-comprehension to create another `IO`. The for-comprehension loops as long as
 the call to `read()` does not return a negative value that would signal that the
@@ -300,6 +461,14 @@ that after each write operation we recursively call `transmit` again, but as
 iteration we increase the counter `acc` with the amount of bytes read at that
 iteration. 
 
+`IO`はモナドなので、私達の新しい`IO`インスタンスをfor内包表記で並べて別の`IO`を作成できます。
+for内包表記は`read()`がストリームの終端に達したことを知らせる負の値を返さない限りループします。
+`>>`はCatsの演算子で、2つの操作を、1つ目の出力が2つ目に必要ないような場合に、
+逐次的に並べるためのものです（_つまり_`first.flatMap(_ => second)`と等価です）。
+上のコードでは、各書き出し操作のあとで再帰的に`transmit`を再び呼び出しますが、
+`IO`はスタック安全なのでスタックオーバーフロー問題を気にする必要はありません。
+各反復では、カウンター`acc`を、その反復で読み出されたバイト数だけ増やします。
+
 We are making progress, and already have a version of `copy` that can be used.
 If any exception is raised when `transfer` is running, then the streams will be
 automatically closed by `Resource`. But there is something else we have to take
@@ -307,12 +476,25 @@ into account: `IO` instances execution can be **_canceled!_** And cancelation
 should not be ignored, as it is a key feature of cats-effect. We will discuss
 cancelation in the next section.
 
+私達は前へ進んでおり、使えるバージョンの`copy`を既に持っています。
+`transfer`が走っているときに何らかの例外が起きると、
+ストリームは`Resource`によって自動的にクローズされます。
+しかし他にも考慮しなければならないことがあります：`IO`インスタンスの実行は**_キャンセル_**できるのです！
+そしてキャンセルはcats-effectの鍵となる機能なので、それが無視されることはありえません。
+次の節ではキャンセルについて議論します。
+
 ### Dealing with cancelation
 Cancelation is a powerful but non-trivial cats-effect feature. In cats-effect,
 some `IO` instances can be canceled ( _e.g._ by other `IO` instances running
 concurrently) meaning that their evaluation will be aborted. If the programmer is
 careful, an alternative `IO` task will be run under cancelation, for example to
 deal with potential cleaning up activities.
+
+キャンセルはcats-effectの強力で非自明な機能です。
+cats-effectでは、`IO`インスタンスは（_例えば_並行に走っている別の`IO`インスタンスによって）
+キャンセルでき、評価は中止されます。
+プログラマーが注意深ければ、例えば潜在的なクリーンアップに対処するために、
+キャンセルに対して代わりの`IO`タスクが走ることになるでしょう。
 
 Thankfully, `Resource` makes dealing with cancelation an easy task. If the `IO`
 inside a `Resource.use` is canceled, the release section of that resource is
@@ -323,12 +505,28 @@ interrupted only between two calls to `IO.blocking`. If we want the execution of
 an IO instance to be interrupted when canceled, without waiting for it to
 finish, we must instantiate it using `IO.interruptible`.
 
+ありがたいことに、`Resource`はキャンセルへの対処を簡単にします。
+`Resource.use`内の`IO`がキャンセルされたら、そのリソースの解放セクションが走ります。
+このことは、私達の例において、入出力ストリームが適切にクローズされることを意味します。
+さらに、cats-effectは`IO.blocking`インスタンス内のコードをキャンセルしません。
+このことは、関数`transmit`において、実行が割り込まれるのは
+`IO.blocking`の呼び出し2つの間に限ることを意味します。
+もしIOインスタンスの実行が、キャンセルされたときに完了を待たず割り込まれてほしいなら、
+`IO.interruptible`を使ってそのIOインスタンスを作らなければなりません。
+
 ### `IOApp` for our final program
+
+最終版プログラムの`IOApp`
 
 We will create a program that copies files, this program only takes two
 parameters: the name of the origin and destination files. For coding this
 program we will use `IOApp` as it allows to maintain purity in our definitions
 up to the program main function.
+
+私達はファイルをコピーするプログラムを作成します。
+このプログラムは2つのパラメータしか取りません：オリジンファイルとデスティネーションファイルの名前です。
+このプログラムのコーディングのために、私達は`IOApp`を使います。
+定義の純粋性をプログラムのメイン関数のレベルまで確保することを可能にするので。
 
 `IOApp` is a kind of 'functional' equivalent to Scala's `App`, where instead of
 coding an effectful `main` method we code a pure `run` function. When executing
@@ -336,9 +534,18 @@ the class a `main` method defined in `IOApp` will call the `run` function we
 have coded. Any interruption (like pressing `Ctrl-c`) will be treated as a
 cancelation of the running `IO`.
 
+`IOApp`はScalaの`App`に対する「関数的な」対応物の一つで、
+ここではeffectfulな`main`メソッドをコーディングする代わりに純粋な`run`関数を書きます。
+このクラスを実行すると、`IOApp`に定義された`main`メソッドは、私達が書いた`run`関数を呼び出します。
+どんな割り込み（例えば`Ctrl-c`を押すなど）も実行中の`IO`のキャンセルとして扱われます。
+
 When coding `IOApp`, instead of a `main` function we have a `run` function,
 which creates the `IO` instance that forms the program. In our case, our `run`
 method can look like this:
+
+`IOApp`をコーディングするとき、私達は`main`関数の代わりに`run`関数を持っており、
+この関数はプログラムを成す`IO`インスタンスを作成します。
+私達のケースでは、`run`メソッドはこんな感じになるかもしれません：
 
 ```scala mdoc:compile-only
 import cats.effect._
@@ -366,11 +573,21 @@ arguments, an error is raised. As `IO` implements `MonadError` we can at any
 moment call to `IO.raiseError` to interrupt a sequence of `IO` operations. The log
 message is printed by means of handy `IO.println` method.
 
+`run`が渡された`args`リストを検証する方法に注意してください。
+引数が2つより少ないときはエラーが発生します。
+`IO`は`MonadError`を実装しているので、私達はいつでも`IO.raiseError`を呼び出して
+`IO`操作の逐次実行に割り込むことができます。
+ログメッセージは便利な`IO.println`メソッドによってプリントされます。
+
 #### Copy program code
 You can check the [final version of our copy program
 here](https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFile.scala).
 
+コピープログラムの最終版は[ここ](https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFile.scala)で確認できます。
+
 The program can be run from `sbt` just by issuing this call:
+
+プログラムは`sbt`から次の呼び出しをするだけで実行できます：
 
 ```scala
 > runMain catseffecttutorial.CopyFile origin.txt destination.txt
@@ -385,6 +602,14 @@ apply if the `copy` function is run from other modules that require its
 functionality. If the `IO` returned by this function is canceled while being
 run, still resources will be properly released.
 
+`IO{java.nio.file.Files.copy(...)}`を使えば私達の関数の純粋性と同じ特性を持った`IO`が
+手に入ると主張されるかもしれません。
+しかし違いがあるのです：私達の`IO`は安全にキャンセルできます！
+なので、ユーザーは走ってるコードを、例えば`Ctrl-c`を押すことで好きなときに止めることができ、
+私達のコードはそのような状況においてさえも安全なリソースの解放（ストリームのクローズ）を処理できます。
+同じことが、`copy`関数の機能を必要とする別のモジュールからこの関数が呼び出されたときにも当てはまります。
+この関数によって返される`IO`が、走っているときにキャンセルされても、リソースは適切に解放されるのです。
+
 ### Polymorphic cats-effect code
 There is an important characteristic of `IO` that we should be aware of. `IO` is
 able to suspend side-effects asynchronously thanks to the existence of an
@@ -394,6 +619,14 @@ side-effects synchronously. On top of that `Async` extends typeclasses such as
 an `IO` instance, to run several `IO` instances concurrently, to timeout an
 execution, to force the execution to wait (sleep), etc.
 
+気づいておくべき重要な特性が`IO`にはあります。
+`IO`は副作用を非同期的にサスペンドすることが可能です。
+これは`Async[IO]`のインスタンスが存在するためです。
+`Async`は`Sync`を継承しているので、`IO`は同期的に副作用をサスペンドすることもできます。
+それに加え、`Aync`は`MonadCancel`, `Concurrent`, `Temporal`のような型クラスを継承しており、
+これによって、`IO`インスタンスをキャンセルしたり、複数の`IO`インスタンスを並行に走らせたり、
+実行をタイムアウトしたり、実行を待機（スリープ）させたり、といったことが可能になります。
+
 So well, `Sync` and `Async` can suspend side effects. We have used `IO` so far
 mostly for that purpose. Now, going back to the code we created to copy files,
 could have we coded its functions in terms of some `F[_]: Sync` and `F[_]:
@@ -401,6 +634,14 @@ Async` instead of `IO`?  Truth is we could, see for example how we would define
 a polymorphic version of our `transfer` function with this approach, just by
 replacing any use of `IO` by calls to the `delay` and `pure` methods of the
 `Sync[F]` instance:
+
+いいでしょう。`Sync`と`Async`は副作用をサスペンドできます。
+私達はここまで、主にそのために`IO`を使ってきました。
+それでは、ファイルをコピーするために書いたコードに戻るとして、
+`IO`の代わりに`F[_]: Sync`や`F[_]: Async`を使ってコーディングすることはできたでしょうか？
+実のところそれは可能で、多相的なバージョンの`transfer`関数が、
+このアプローチによってどう定義されるか見てください。
+単に`IO`を`Sync[F]`インスタンスの`delay`と`pure`メソッドの呼び出しに置き換えるだけです：
 
 ```scala mdoc:compile-only
 import cats.effect.Sync
@@ -418,6 +659,10 @@ def transmit[F[_]: Sync](origin: InputStream, destination: OutputStream, buffer:
 We leave as an exercise to code the polymorphic versions of `inputStream`,
 `outputStream`, `inputOutputStreams`, `transfer` and `copy` functions.
 
+多相バージョンの関数`inputStream`,
+`outputStream`, `inputOutputStreams`, `transfer` そして `copy` をコーディングするのは
+練習問題とします。
+
 ```scala mdoc:compile-only
 import cats.effect._
 import java.io._
@@ -434,21 +679,44 @@ Only in our `main` function we will set `IO` as the final `F` for our program.
 To do so, of course, a `Sync[IO]` instance must be in scope, but that instance
 is brought transparently by `IOApp` so we do not need to be concerned about it.
 
+私達のプログラムで`IO`を最終的な`F`としてセットするのは`main`関数の中だけです。
+そうするためにはもちろん、`Sync[IO]`のインスタンスがスコープに入っていなければなりませんが、
+そのインスタンスは`IOApp`によって透過的にもたらされるので、気にする必要はありません。
+
 During the remainder of this tutorial we will use polymorphic code, only falling
 to `IO` in the `run` method of our `IOApp`s. Polymorphic code is less
 restrictive, as functions are not tied to `IO` but are applicable to any `F[_]`
 as long as there is an instance of the type class required (`Sync[F[_]]` ,
 `Async[F[_]]`...) in scope. The type class to use will depend on the
 requirements of our code.
+
+このチュートリアルの残りでは、多相的なコードだけを使い、
+`IOApp`の`run`メソッドにおいてのみ`IO`に収まります。
+多相的なコードは制限が少ないです。
+関数が`IO`に紐付いておらず、必要な型クラス (`Sync[F[_]]`, `Async[F[_]]` ...)
+のインスタンスがスコープに存在する限り任意の`F[_]`に適用可能であるので。
+使用する型クラスは私達のコードの要件よって変わるでしょう。
  
 #### Copy program code, polymorphic version
+
+コピープログラム、多相的バージョン
+
 The polymorphic version of our copy program in full is available
 [here](https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFilePolymorphic.scala).
 
+多相バージョンのコピープログラムは全体が
+[ここ](https://github.com/lrodero/cats-effect-tutorial/blob/series/3.x/src/main/scala/catseffecttutorial/copyfile/CopyFilePolymorphic.scala)
+で利用可能です。
+
 ### Exercises: improving our small `IO` program
+
+練習問題：私達の小さな`IO`プログラムを改善
 
 To finalize we propose you some exercises that will help you to keep improving
 your IO-kungfu:
+
+仕上げとして、あなたのIO-カンフー [訳注：厳しい訓練によって得られるスキルをカンフーと呼ぶことがあります]
+を向上する助けになるであろう練習問題を提案します：
 
 1. Modify the `IOApp` so it shows an error and abort the execution if the origin
    and destination files are the same, the origin file cannot be open for
@@ -466,6 +734,23 @@ your IO-kungfu:
 4. Create a new program able to copy folders. If the origin folder has
    subfolders, then their contents must be recursively copied too. Of course the
    copying must be safely cancelable at any moment.
+
+1. `IOApp`を修正して、次の場合にエラーを表示し、実行をやめるようにしてください。
+   オリジンとデスティネーションファイルが同じ、またはオリジンファイルが読み込み用にオープンできない、
+   またはデスティネーションファイルが書き込みようにオープンできない。
+   また、デスティネーションファイルが既に存在しているなら、プログラムは上書きする前に確認を求めるべきです。
+2. `transmit`を修正して、バッファサイズがハードコードされるのではなく、
+   パラメータとして渡されるようにしてください。
+3. 実際にストリームが適切にクローズされることを確認して、
+   安全にキャンセルできることをテストしてください。
+   単にプログラム実行を`Ctrl-c`によって割り込むだけでできます。
+   プログラムに割り込める時間があるようにするため、
+   `transmit`関数に数秒のディレイを入れてください（`IO.sleep`を見よ）。
+   また、`Resource`の解放機能が走ることを保証するためには、
+   ログメッセージを追加しても良いでしょう（`IO.println`を見よ）。
+4. フォルダをコピーするための新しいプログラムを作成してください。
+   オリジンフォルダがサブフォルダを持っているなら、その中身も再帰的にコピーされなければなりません。
+   もちろん、コピーはいつでも安全にキャンセルできなければなりません。
 
 ## <a name="producerconsumer"></a>Producer-consumer problem - concurrency and fibers
 The _producer-consumer_ pattern is often found in concurrent setups. Here one or
