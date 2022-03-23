@@ -5,6 +5,9 @@
 
 <img align="right" width="256px" height="256px" src="images/cats-effect-logo.png"/>
 
+注意：このリポジトリは Cats Effect ドキュメントの日本語訳のためのものです。
+成果物は https://www.kamasaki.net/cats-effect/ で閲覧できます。
+
 <p>Cats Effect is a high-performance, asynchronous, composable framework for building real-world applications in a purely functional style within the Typelevel ecosystem. It provides a concrete tool, known as "the <code>IO</code> monad", for capturing and controlling actions, often referred to as "effects", that your program wishes to perform within a resource-safe, typed context with seamless support for concurrency and coordination. These effects may be asynchronous (callback-driven) or synchronous (directly returning values); they may return within microseconds or run infinitely.</p>
 
 <p>Even more importantly, Cats Effect defines a set of typeclasses which define what it means to be a purely functional runtime system. These abstractions power a thriving ecosystem consisting of streaming frameworks, JDBC database layers, HTTP servers and clients, asynchronous clients for systems like Redis and MongoDB, and so much more! Additionally, you can leverage these abstractions within your own application to unlock powerful capabilities with little-or-no code changes, for example solving problems such as dependency injection, multiple error channels, shared state across modules, tracing, and more.</p>
