@@ -1,10 +1,4 @@
 pull_request_rules:
-  - name: label scala-steward's PRs
-    conditions:
-      - author=scala-steward
-    actions:
-      label:
-        add: [dependencies]
   - name: automatically merge dependabot docs PRs
     conditions:
       - author=dependabot[bot]
