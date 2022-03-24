@@ -127,7 +127,9 @@ const siteConfig = {
       infoLink: 'https://www.inner-product.com/',
       pinned: true
     }
-  ]
+  ],
+
+  noIndex: true
 };
 
 module.exports = siteConfig;
